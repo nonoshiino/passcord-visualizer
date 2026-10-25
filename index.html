@@ -29,7 +29,19 @@
     position: absolute; left: 0; top: 0; width: 390px; height: 844px;
     transform-origin: 0 0; background: var(--bg); overflow: hidden;
   }
+  /* wallpaper: blurred like the iOS passcode screen. Extends past the sides so the blur doesn't fade at the edges */
+  .wall {
+    position: absolute; top: -30px; bottom: -30px; left: -30px; right: -30px;
+    background: center / cover no-repeat; filter: blur(22px) brightness(.85);
+    display: none;
+  }
+  .wall.fit-width { background-size: calc(100% - 60px) auto; }
+  #stage.has-bg .wall { display: block; }
+  #stage.has-bg .key { background: rgba(255,255,255,.22); }
+  #stage.has-bg .key.pressed { background: rgba(255,255,255,.6); }
+  #stage.has-bg .key .num { font-weight: 400; }
   .screen {
+    position: relative;
     width: 100%; height: 100%;
     padding: 0 16px 40px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -88,36 +100,77 @@
   .toast.show { opacity: 1; }
 
   /* ---- controls ---- */
+  /* grouped lists in the style of the iPhone Settings app */
+  [hidden] { display: none !important; }
   .controls {
     width: 100%; max-width: 400px;
-    padding: 0 16px 32px;
+    padding: 4px 16px 40px;
+    font-size: 16px;
   }
-  .panel {
-    background: var(--panel); border-radius: 14px; padding: 14px;
-    display: flex; flex-direction: column; gap: 12px;
-    font-size: 14px;
+  .group-title { font-size: 13px; color: var(--muted); margin: 22px 16px 7px; }
+  .group-title:first-child { margin-top: 8px; }
+  .group { background: #1c1c1e; border-radius: 10px; overflow: hidden; }
+  .cell {
+    position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    min-height: 46px; padding: 7px 16px; color: #fff;
   }
-  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .btn {
-    background: var(--accent); color: #fff; border: 0; border-radius: 9px;
-    padding: 9px 16px; font-size: 14px; font-family: inherit; cursor: pointer;
+  .cell + .cell::before {
+    content: ''; position: absolute; top: 0; left: 16px; right: 0;
+    border-top: .5px solid #3a3a3c;
   }
-  .btn.secondary { background: #2c2c2e; }
-  .btn:disabled { opacity: .4; cursor: default; }
-  .file-label { flex: 1; min-width: 0; }
-  .file-name { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  input[type=number] {
-    width: 72px; background: #2c2c2e; color: #fff; border: 0; border-radius: 8px;
-    padding: 6px 8px; font-size: 14px; font-family: inherit;
+  .cell.tap { cursor: pointer; }
+  .cell.tap:active { background: #2c2c2e; }
+  .cell .label { flex: none; }
+  .cell .sub { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .value {
+    color: var(--muted); font-size: 15px; min-width: 0;
+    display: flex; align-items: center; gap: 6px;
   }
-  input[type=number]:disabled, #bpmReset:disabled { opacity: .4; }
-  select {
-    background: #2c2c2e; color: #fff; border: 0; border-radius: 8px;
-    padding: 6px 8px; font-size: 13px; font-family: inherit;
+  .value .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chev { color: #5a5a5e; font-size: 22px; line-height: 1; margin-top: -2px; }
+  .note { font-size: 13px; color: var(--muted); margin: 7px 16px 0; line-height: 1.5; }
+  .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+  .link:disabled { color: #48484a; cursor: default; }
+  .link.danger { color: #ff453a; }
+  .transport { display: flex; gap: 10px; }
+  .pill {
+    border: 0; border-radius: 999px; padding: 8px 18px; font: inherit; font-size: 15px; font-weight: 600;
+    background: var(--accent); color: #fff; cursor: pointer;
   }
-  label.check { display: flex; gap: 6px; align-items: center; color: #ddd; font-size: 13px; }
-  .info { color: var(--muted); font-size: 12px; line-height: 1.6; }
-  .seek { position: relative; padding: 9px 0; cursor: pointer; touch-action: none; }
+  .pill.gray { background: #3a3a3c; }
+  .pill:disabled { opacity: .35; cursor: default; }
+
+  .switch { position: relative; flex: none; width: 51px; height: 31px; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .switch span { position: absolute; inset: 0; border-radius: 16px; background: #39393d; transition: background .2s; pointer-events: none; }
+  .switch span::after {
+    content: ''; position: absolute; left: 2px; top: 2px; width: 27px; height: 27px; border-radius: 50%;
+    background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.25); transition: transform .2s;
+  }
+  .switch input:checked + span { background: #30d158; }
+  .switch input:checked + span::after { transform: translateX(20px); }
+
+  .seg { display: flex; background: rgba(118,118,128,.24); border-radius: 9px; padding: 2px; flex: none; }
+  .seg button {
+    border: 0; background: none; color: #fff; font: inherit; font-size: 13px;
+    padding: 5px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap;
+  }
+  .seg button.on { background: #636366; font-weight: 600; }
+
+  .stepper { display: flex; background: rgba(118,118,128,.24); border-radius: 8px; flex: none; }
+  .stepper button {
+    width: 42px; height: 30px; border: 0; background: none; color: #fff; font-size: 20px;
+    line-height: 1; cursor: pointer;
+  }
+  .stepper button + button { border-left: .5px solid #48484a; }
+  .val {
+    width: 52px; background: none; border: 0; color: var(--muted); font: inherit; font-size: 15px;
+    text-align: right; padding: 0; -moz-appearance: textfield;
+  }
+  .val::-webkit-inner-spin-button, .val::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number].val:not([readonly]):focus { color: #fff; outline: none; }
+  .hidden-select { display: none; }
+  .seek { position: relative; flex: 1; padding: 9px 0; cursor: pointer; touch-action: none; }
   .progress { height: 4px; background: #3a3a3c; border-radius: 2px; overflow: hidden; transition: height .1s; }
   .progress > div { height: 100%; width: 0; background: var(--accent); }
   .seek:hover .progress, .seek.dragging .progress { height: 6px; }
@@ -134,6 +187,7 @@
 <body>
 
 <div id="stageWrap"><div id="stage">
+<div class="wall" id="wall"></div>
 <div class="screen">
   <svg class="lock" viewBox="0 0 26 34" aria-hidden="true">
     <path d="M6 15V10a7 7 0 0 1 14 0v5" fill="none" stroke="#fff" stroke-width="3"/>
@@ -148,54 +202,92 @@
 <div class="toast" id="toast">鍵マークをタップ、または H キーで戻せます</div>
 
 <div class="controls">
-  <div class="panel">
-    <div class="row">
-      <label class="btn secondary" for="file">MIDIを選択</label>
-      <input type="file" id="file" accept=".mid,.midi,audio/midi">
-      <div class="file-label"><div class="file-name" id="fileName">未選択</div></div>
+  <div class="group-title">再生</div>
+  <div class="group">
+    <label class="cell tap" for="file">
+      <span class="label">MIDIファイル</span>
+      <span class="value"><span class="text" id="fileName">選択してください</span><span class="chev">›</span></span>
+    </label>
+    <input type="file" id="file" accept=".mid,.midi,audio/midi">
+    <div class="cell">
+      <div class="seek" id="seek"><div class="progress" id="progress"><div id="bar"></div></div><div class="thumb" id="thumb"></div></div>
     </div>
-    <div class="row">
-      <button class="btn" id="play" disabled>▶ 再生</button>
-      <button class="btn secondary" id="stop" disabled>■ 停止</button>
-      <label class="check"><input type="checkbox" id="sound" checked>音を鳴らす</label>
-      <select id="soundType">
-        <option value="beep">電子音</option>
-        <option value="glock">グロッケン</option>
-      </select>
+    <div class="cell">
+      <div class="transport">
+        <button class="pill" id="play" disabled>▶ 再生</button>
+        <button class="pill gray" id="stop" disabled>■ 停止</button>
+      </div>
     </div>
-    <div class="row">
-      <span style="font-size:13px;color:#ddd">BPM</span>
-      <input type="number" id="bpm" min="20" max="400" step="1" value="120" disabled>
-      <button class="btn secondary" id="bpmReset" disabled>MIDIのBPMに戻す</button>
-      <span class="file-name" id="bpmInfo"></span>
+    <div class="cell">
+      <span class="label">BPM<span class="sub" id="bpmInfo">MIDIから自動で読み取ります</span></span>
+      <span class="value">
+        <input type="number" class="val" id="bpm" min="20" max="400" step="1" value="120" disabled>
+        <span class="stepper" data-for="bpm" data-min="20" data-max="400"><button data-d="-1">−</button><button data-d="1">+</button></span>
+      </span>
     </div>
-    <div class="seek" id="seek"><div class="progress" id="progress"><div id="bar"></div></div><div class="thumb" id="thumb"></div></div>
-    <div class="row">
-      <span style="font-size:13px;color:#ddd">8 9 0 =</span>
-      <select id="octMode">
-        <option value="auto">自動(多い方)</option>
-        <option value="up">1オクターブ高いドレミ</option>
-        <option value="down">1オクターブ低いドレミ</option>
-      </select>
-      <label class="check"><input type="checkbox" id="noDrums" checked>ドラム(ch10)を除外</label>
+    <div class="cell">
+      <button class="link" id="bpmReset" disabled>MIDIのBPMに戻す</button>
     </div>
-    <div class="row">
-      <span style="font-size:13px;color:#ddd">丸の数</span>
-      <select id="dotCount" autocomplete="off">
-        <option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option>
-        <option>9</option><option>10</option><option>11</option><option>12</option>
-      </select>
-      <select id="dotMode" autocomplete="off">
-        <option value="reset">いっぱいで揺れてリセット</option>
-        <option value="grow">どんどん増える</option>
-      </select>
-    </div>
-    <div class="row">
-      <button class="btn secondary" id="hidePanel">この欄を隠す</button>
-      <span class="file-name">鍵マークのタップ / H キーで再表示</span>
-    </div>
-    <div class="info" id="info">MIDIファイルを選ぶと、音に合わせてボタンが押されます。</div>
   </div>
+
+  <div class="group-title">音</div>
+  <div class="group">
+    <div class="cell">
+      <span class="label">音を鳴らす</span>
+      <label class="switch"><input type="checkbox" id="sound" checked><span></span></label>
+    </div>
+    <div class="cell">
+      <span class="label">音色</span>
+      <span class="seg" data-for="soundType"><button data-v="beep">電子音</button><button data-v="glock">グロッケン</button></span>
+      <select id="soundType" class="hidden-select"><option value="beep">電子音</option><option value="glock">グロッケン</option></select>
+    </div>
+  </div>
+
+  <div class="group-title">パスコード画面</div>
+  <div class="group">
+    <div class="cell">
+      <span class="label">丸の数</span>
+      <span class="value">
+        <input type="number" class="val" id="dotCount" value="6" readonly autocomplete="off" tabindex="-1">
+        <span class="stepper" data-for="dotCount" data-min="4" data-max="12"><button data-d="-1">−</button><button data-d="1">+</button></span>
+      </span>
+    </div>
+    <div class="cell">
+      <span class="label">リセット</span>
+      <span class="seg" data-for="dotMode"><button data-v="reset">あり</button><button data-v="grow">なし</button></span>
+      <select id="dotMode" class="hidden-select" autocomplete="off"><option value="reset">リセットあり</option><option value="grow">リセットなし</option></select>
+    </div>
+    <label class="cell tap" for="bgFile">
+      <span class="label">背景画像</span>
+      <span class="value"><span class="text" id="bgName">なし</span><span class="chev">›</span></span>
+    </label>
+    <input type="file" id="bgFile" accept="image/*">
+    <div class="cell" id="bgFitCell" hidden>
+      <span class="label">合わせ方</span>
+      <span class="seg" data-for="bgFit"><button data-v="width">幅ぴったり</button><button data-v="cover">はみ出しOK</button></span>
+      <select id="bgFit" class="hidden-select"><option value="width">幅ぴったり</option><option value="cover" selected>はみ出しOK</option></select>
+    </div>
+    <div class="cell" id="bgClearCell" hidden>
+      <button class="link danger" id="bgClear">背景画像を削除</button>
+    </div>
+  </div>
+  <div class="note">リセットありは丸が埋まるたびに揺れて消えます。なしは丸が増え続けます。</div>
+
+  <div class="group" style="margin-top:22px">
+    <div class="cell">
+      <button class="link" id="hidePanel">設定を隠す</button>
+    </div>
+  </div>
+  <div class="note">隠したあとは、鍵マークをタップするか H キーで戻せます。</div>
+
+  <div class="group-title">詳細</div>
+  <div class="group">
+    <div class="cell">
+      <span class="label">ドラム(ch10)を除外</span>
+      <label class="switch"><input type="checkbox" id="noDrums" checked><span></span></label>
+    </div>
+  </div>
+  <div class="note" id="info">MIDIファイルを選ぶと、音に合わせてボタンが押されます。</div>
 </div>
 
 <script>
@@ -327,7 +419,7 @@ function setBare(on) {
   if (on) {
     const t = document.getElementById('toast');
     t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 1800);
+    setTimeout(() => t.classList.remove('show'), 2800);
   }
 }
 document.getElementById('hidePanel').addEventListener('click', () => setBare(true));
@@ -548,7 +640,7 @@ function prepare() {
   const rate = playbackRate();
   const notes = ($('noDrums').checked ? allNotes.filter(n => n.ch !== 9) : allNotes)
     .map(n => ({ ...n, start: n.start / rate, end: n.end / rate }));
-  const map = buildMapping(notes, $('octMode').value);
+  const map = buildMapping(notes, 'auto');
   for (const n of notes) n.key = map.keyFor(n.note);
 
   // visual intervals: release briefly before the same key is hit again so re-presses are visible
@@ -668,11 +760,11 @@ async function loadBuffer(buf, name) {
   bpmDefault = Math.round(fileBpm * 10) / 10;
   $('bpm').value = bpmDefault;
   $('bpm').disabled = $('bpmReset').disabled = false;
-  $('bpmInfo').textContent = `MIDI: ${bpmDefault}` + (parsed.tempoVaries ? '(途中でテンポ変化あり)' : '');
+  $('bpmInfo').textContent = `MIDIの値: ${bpmDefault}` + (parsed.tempoVaries ? '(途中で変化あり)' : '');
   $('fileName').textContent = name;
   $('play').disabled = !allNotes.length;
   const notes = $('noDrums').checked ? allNotes.filter(n => n.ch !== 9) : allNotes;
-  window.__map = buildMapping(notes, $('octMode').value);
+  window.__map = buildMapping(notes, 'auto');
   prepare();
   resetDots();
 }
@@ -731,13 +823,61 @@ function onBpmChange() {
 $('bpm').addEventListener('change', onBpmChange);
 $('bpmReset').addEventListener('click', () => { $('bpm').value = bpmDefault; onBpmChange(); });
 $('stop').addEventListener('click', stop);
-for (const id of ['octMode', 'noDrums']) $(id).addEventListener('change', () => {
+$('noDrums').addEventListener('change', () => {
   if (!allNotes.length) return;
   const notes = $('noDrums').checked ? allNotes.filter(n => n.ch !== 9) : allNotes;
-  window.__map = buildMapping(notes, $('octMode').value);
+  window.__map = buildMapping(notes, 'auto');
   if (playing) play(); else prepare();
 });
 $('sound').addEventListener('change', () => { if (!$('sound').checked) killAudio(); else if (ctx) ensureAudio(); });
+
+// ---------- settings widgets: segmented controls and steppers drive the hidden inputs the rest of the code reads ----------
+document.querySelectorAll('.seg').forEach(seg => {
+  const sel = $(seg.dataset.for);
+  const sync = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === sel.value));
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || b.dataset.v === sel.value) return;
+    sel.value = b.dataset.v;
+    sync();
+    sel.dispatchEvent(new Event('change'));
+  });
+  sync();
+});
+document.querySelectorAll('.stepper').forEach(st => {
+  const el = $(st.dataset.for);
+  st.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || el.disabled) return;
+    const v = Math.min(+st.dataset.max, Math.max(+st.dataset.min, Math.round(+el.value || 0) + +b.dataset.d));
+    if (v === +el.value) return;
+    el.value = v;
+    el.dispatchEvent(new Event('change'));
+  });
+});
+
+// ---------- wallpaper ----------
+let wallUrl = null;
+$('bgFile').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (wallUrl) URL.revokeObjectURL(wallUrl);
+  wallUrl = URL.createObjectURL(f);
+  $('wall').style.backgroundImage = `url("${wallUrl}")`;
+  $('stage').classList.add('has-bg');
+  $('bgName').textContent = f.name;
+  $('bgFitCell').hidden = $('bgClearCell').hidden = false;
+  e.target.value = '';
+});
+$('bgFit').addEventListener('change', () => $('wall').classList.toggle('fit-width', $('bgFit').value === 'width'));
+$('bgClear').addEventListener('click', () => {
+  if (wallUrl) URL.revokeObjectURL(wallUrl);
+  wallUrl = null;
+  $('wall').style.backgroundImage = '';
+  $('stage').classList.remove('has-bg');
+  $('bgName').textContent = 'なし';
+  $('bgFitCell').hidden = $('bgClearCell').hidden = true;
+});
 </script>
 </body>
 </html>
