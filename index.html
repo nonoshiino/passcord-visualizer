@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>パスコードMIDI</title>
+<style>
+  :root {
+    --bg: #000;
+    --key: #333335;
+    --key-pressed: #a6a6a8;
+    --text: #fff;
+    --panel: #161618;
+    --muted: #8e8e93;
+    --accent: #0a84ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Helvetica Neue", "Segoe UI", "Yu Gothic UI", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    -webkit-user-select: none; user-select: none;
+  }
+
+  /* ---- passcode screen: a fixed 390x844 phone screen, scaled to fit (same ratio on PC and phone) ---- */
+  #stageWrap { position: relative; flex: none; }
+  #stage {
+    position: absolute; left: 0; top: 0; width: 390px; height: 844px;
+    transform-origin: 0 0; background: var(--bg); overflow: hidden;
+  }
+  .screen {
+    width: 100%; height: 100%;
+    padding: 0 16px 40px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .lock { width: 26px; height: 34px; margin-bottom: 26px; }
+  .title { font-size: 21px; font-weight: 400; letter-spacing: .04em; margin: 0 0 22px; }
+  .dots { display: flex; gap: 25px; margin-bottom: 58px; }
+  .dots-overflow { position: absolute; left: 0; top: 0; width: 100%; height: 0; pointer-events: none; z-index: 2; }
+  .dots-overflow .dot { position: absolute; top: 0; }
+  .dot {
+    flex: none;
+    width: 13px; height: 13px; border-radius: 50%;
+    border: 1.5px solid #fff; background: transparent;
+    transition: background .08s;
+  }
+  .dot.on { background: #fff; }
+  .dots.shake { animation: shake .35s; }
+  @keyframes shake {
+    20% { transform: translateX(-14px); } 40% { transform: translateX(12px); }
+    60% { transform: translateX(-8px); } 80% { transform: translateX(5px); }
+  }
+
+  .pad {
+    display: grid;
+    grid-template-columns: repeat(3, 78px);
+    gap: 16px 28px;
+  }
+  .key {
+    width: 78px; height: 78px; border-radius: 50%;
+    border: 0; padding: 0; margin: 0;
+    background: var(--key); color: var(--text);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: inherit; cursor: pointer;
+    transition: background .35s ease-out;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .key.pressed { background: var(--key-pressed); transition: background .03s; }
+  .key .num { font-size: 37px; font-weight: 300; line-height: 1; }
+  .key .sub { font-size: 10px; font-weight: 600; letter-spacing: .18em; margin-top: 2px; padding-left: .18em; height: 12px; }
+  .key.zero { grid-column: 2; }
+  .key.zero .num { margin-top: 4px; }
+
+  body { overflow-x: hidden; background: #111; }
+  body.bare { justify-content: center; height: 100vh; overflow: hidden; }
+  body.bare .controls { display: none; }
+  @media (min-width: 820px) {
+    body { flex-direction: row; justify-content: center; align-items: center; gap: 24px; }
+    .controls { padding: 0; width: 400px; flex: none; }
+  }
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: rgba(60,60,64,.9); color: #fff; font-size: 13px;
+    padding: 8px 14px; border-radius: 10px; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity .3s;
+  }
+  .toast.show { opacity: 1; }
+
+  /* ---- controls ---- */
+  .controls {
+    width: 100%; max-width: 400px;
+    padding: 0 16px 32px;
+  }
+  .panel {
+    background: var(--panel); border-radius: 14px; padding: 14px;
+    display: flex; flex-direction: column; gap: 12px;
+    font-size: 14px;
+  }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    background: var(--accent); color: #fff; border: 0; border-radius: 9px;
+    padding: 9px 16px; font-size: 14px; font-family: inherit; cursor: pointer;
+  }
+  .btn.secondary { background: #2c2c2e; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .file-label { flex: 1; min-width: 0; }
+  .file-name { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  input[type=number] {
+    width: 72px; background: #2c2c2e; color: #fff; border: 0; border-radius: 8px;
+    padding: 6px 8px; font-size: 14px; font-family: inherit;
+  }
+  input[type=number]:disabled, #bpmReset:disabled { opacity: .4; }
+  select {
+    background: #2c2c2e; color: #fff; border: 0; border-radius: 8px;
+    padding: 6px 8px; font-size: 13px; font-family: inherit;
+  }
+  label.check { display: flex; gap: 6px; align-items: center; color: #ddd; font-size: 13px; }
+  .info { color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .seek { position: relative; padding: 9px 0; cursor: pointer; touch-action: none; }
+  .progress { height: 4px; background: #3a3a3c; border-radius: 2px; overflow: hidden; transition: height .1s; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); }
+  .seek:hover .progress, .seek.dragging .progress { height: 6px; }
+  .thumb {
+    position: absolute; top: 50%; left: 0; width: 14px; height: 14px; border-radius: 50%;
+    background: #fff; transform: translate(-50%, -50%) scale(0); transition: transform .1s;
+    pointer-events: none;
+  }
+  .seek:hover .thumb, .seek.dragging .thumb { transform: translate(-50%, -50%) scale(1); }
+  @media (hover: none) { .thumb { transform: translate(-50%, -50%) scale(1); } }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+
+<div id="stageWrap"><div id="stage">
+<div class="screen">
+  <svg class="lock" viewBox="0 0 26 34" aria-hidden="true">
+    <path d="M6 15V10a7 7 0 0 1 14 0v5" fill="none" stroke="#fff" stroke-width="3"/>
+    <rect x="1" y="14" width="24" height="19" rx="3" fill="#fff"/>
+  </svg>
+  <p class="title">パスコードを入力</p>
+  <div class="dots" id="dots"></div>
+  <div class="pad" id="pad"></div>
+</div>
+<div class="dots-overflow" id="dotsOverflow"></div>
+</div></div>
+<div class="toast" id="toast">鍵マークをタップ、または H キーで戻せます</div>
+
+<div class="controls">
+  <div class="panel">
+    <div class="row">
+      <label class="btn secondary" for="file">MIDIを選択</label>
+      <input type="file" id="file" accept=".mid,.midi,audio/midi">
+      <div class="file-label"><div class="file-name" id="fileName">未選択</div></div>
+    </div>
+    <div class="row">
+      <button class="btn" id="play" disabled>▶ 再生</button>
+      <button class="btn secondary" id="stop" disabled>■ 停止</button>
+      <label class="check"><input type="checkbox" id="sound" checked>音を鳴らす</label>
+      <select id="soundType">
+        <option value="beep">電子音</option>
+        <option value="glock">グロッケン</option>
+      </select>
+    </div>
+    <div class="row">
+      <span style="font-size:13px;color:#ddd">BPM</span>
+      <input type="number" id="bpm" min="20" max="400" step="1" value="120" disabled>
+      <button class="btn secondary" id="bpmReset" disabled>MIDIのBPMに戻す</button>
+      <span class="file-name" id="bpmInfo"></span>
+    </div>
+    <div class="seek" id="seek"><div class="progress" id="progress"><div id="bar"></div></div><div class="thumb" id="thumb"></div></div>
+    <div class="row">
+      <span style="font-size:13px;color:#ddd">8 9 0 =</span>
+      <select id="octMode">
+        <option value="auto">自動(多い方)</option>
+        <option value="up">1オクターブ高いドレミ</option>
+        <option value="down">1オクターブ低いドレミ</option>
+      </select>
+      <label class="check"><input type="checkbox" id="noDrums" checked>ドラム(ch10)を除外</label>
+    </div>
+    <div class="row">
+      <span style="font-size:13px;color:#ddd">丸の数</span>
+      <select id="dotCount" autocomplete="off">
+        <option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option>
+        <option>9</option><option>10</option><option>11</option><option>12</option>
+      </select>
+      <select id="dotMode" autocomplete="off">
+        <option value="reset">いっぱいで揺れてリセット</option>
+        <option value="grow">どんどん増える</option>
+      </select>
+    </div>
+    <div class="row">
+      <button class="btn secondary" id="hidePanel">この欄を隠す</button>
+      <span class="file-name">鍵マークのタップ / H キーで再表示</span>
+    </div>
+    <div class="info" id="info">MIDIファイルを選ぶと、音に合わせてボタンが押されます。</div>
+  </div>
+</div>
+
+<script>
+// ---------- keypad ----------
+const KEYS = [
+  ['1', ''], ['2', 'ABC'], ['3', 'DEF'],
+  ['4', 'GHI'], ['5', 'JKL'], ['6', 'MNO'],
+  ['7', 'PQRS'], ['8', 'TUV'], ['9', 'WXYZ'],
+  ['0', ''],
+];
+const pad = document.getElementById('pad');
+const keyEls = {};
+for (const [n, sub] of KEYS) {
+  const b = document.createElement('button');
+  b.className = 'key' + (n === '0' ? ' zero' : '');
+  b.innerHTML = `<span class="num">${n}</span><span class="sub">${sub}</span>`;
+  pad.appendChild(b);
+  keyEls[n] = b;
+  b.addEventListener('pointerdown', () => manualPress(n));
+  b.addEventListener('pointerup', () => manualRelease(n));
+  b.addEventListener('pointerleave', () => manualRelease(n));
+}
+
+const dotsEl = document.getElementById('dots');
+const overflowEl = document.getElementById('dotsOverflow');
+let dots = [], dotCount = 6, filled = 0, dotGen = 0, extraSeq = 0, dotPitch = 38;
+function buildDots() {
+  dotCount = +document.getElementById('dotCount').value;
+  dotsEl.innerHTML = '';
+  dots = [];
+  for (let i = 0; i < dotCount; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot';
+    dotsEl.appendChild(d);
+    dots.push(d);
+  }
+  resetDots();
+  layoutDots();
+}
+// the screen is a fixed 390x844 stage scaled to fit the window, so PC and phone look the same
+const STAGE_W = 390, STAGE_H = 844;
+function fitStage() {
+  const wide = innerWidth >= 820 && !document.body.classList.contains('bare');
+  const s = Math.min((wide ? innerWidth - 448 : innerWidth) / STAGE_W, innerHeight / STAGE_H);
+  document.getElementById('stage').style.transform = `scale(${s})`;
+  const wrap = document.getElementById('stageWrap');
+  wrap.style.width = STAGE_W * s + 'px';
+  wrap.style.height = STAGE_H * s + 'px';
+}
+// shrink the spacing so up to 12 dots still fit
+function layoutDots() {
+  const avail = STAGE_W - 32;
+  const gap = Math.max(6, Math.min(25, Math.floor((avail - dotCount * 13) / (dotCount - 1))));
+  dotsEl.style.gap = gap + 'px';
+  dotPitch = 13 + gap;
+  placeOverflow();
+}
+// "grow" mode: extra dots continue to the right of the row, then wrap like text onto lines below,
+// on a square grid whose columns line up with the original dots (stage coordinates, unscaled)
+const DOT_MARGIN = 8;
+function overflowLayout() {
+  const first = dots[0], last = dots[dotCount - 1];
+  const step = dotPitch, top = first.offsetTop;
+  const colStart = first.offsetLeft - Math.floor((first.offsetLeft - DOT_MARGIN) / step) * step;
+  const lineCap = Math.floor((STAGE_W - DOT_MARGIN - 13 - colStart) / step) + 1;
+  const x0 = last.offsetLeft + step;
+  const firstCap = Math.max(0, Math.floor((STAGE_W - DOT_MARGIN - 13 - x0) / step) + 1);
+  // lines below the row, down to the bottom of the screen
+  const lines = Math.max(1, Math.floor((STAGE_H - DOT_MARGIN - 13 - top) / step));
+  return { top, step, colStart, x0, firstCap, lineCap, lines, capacity: firstCap + lineCap * lines };
+}
+function placeOverflow() {
+  if (!overflowEl.children.length) return;
+  const L = overflowLayout();
+  for (const d of overflowEl.children) {
+    const i = (+d.dataset.k - 1) % L.capacity; // past the bottom, start over below the row
+    let x, line;
+    if (i < L.firstCap) { x = L.x0 + i * L.step; line = 0; }
+    else { const j = i - L.firstCap; x = L.colStart + (j % L.lineCap) * L.step; line = 1 + Math.floor(j / L.lineCap); }
+    d.style.left = x + 'px';
+    d.style.top = L.top + line * L.step + 'px';
+  }
+}
+function addOverflowDot() {
+  const d = document.createElement('div');
+  d.className = 'dot on';
+  d.dataset.k = ++extraSeq;
+  overflowEl.appendChild(d);
+  // after the screen is full, new dots land on the oldest spots, so drop those
+  const cap = overflowLayout().capacity;
+  while (overflowEl.children.length > cap) overflowEl.firstChild.remove();
+  placeOverflow();
+}
+function advanceDots() {
+  if (document.getElementById('dotMode').value === 'grow') {
+    if (filled < dotCount) dots[filled++].classList.add('on');
+    else addOverflowDot();
+    return;
+  }
+  if (filled >= dotCount) resetDots();
+  dots[filled++].classList.add('on');
+  if (filled === dotCount) {
+    // all dots filled: shake like a wrong passcode, then clear
+    const gen = ++dotGen;
+    dotsEl.classList.remove('shake');
+    void dotsEl.offsetWidth;
+    dotsEl.classList.add('shake');
+    setTimeout(() => { if (gen === dotGen) resetDots(); }, 360);
+  }
+}
+function resetDots() {
+  dotGen++;
+  filled = 0;
+  dotsEl.classList.remove('shake');
+  dots.forEach(d => d.classList.remove('on'));
+  overflowEl.innerHTML = '';
+  extraSeq = 0;
+}
+fitStage();
+buildDots();
+window.addEventListener('resize', fitStage);
+document.getElementById('dotCount').addEventListener('change', buildDots);
+document.getElementById('dotMode').addEventListener('change', resetDots);
+
+// ---------- hide the control panel (lock icon or H key brings it back) ----------
+function setBare(on) {
+  document.body.classList.toggle('bare', on);
+  fitStage();
+  if (on) {
+    const t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 1800);
+  }
+}
+document.getElementById('hidePanel').addEventListener('click', () => setBare(true));
+document.querySelector('.lock').addEventListener('click', () => {
+  if (document.body.classList.contains('bare')) setBare(false);
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'h' || e.key === 'H') && !e.target.matches('input, select')) {
+    setBare(!document.body.classList.contains('bare'));
+  }
+});
+
+// ---------- MIDI parser ----------
+function parseMidi(buf) {
+  const d = new DataView(buf);
+  let p = 0;
+  const str = n => { let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(d.getUint8(p + i)); p += n; return s; };
+  const u32 = () => { const v = d.getUint32(p); p += 4; return v; };
+  const u16 = () => { const v = d.getUint16(p); p += 2; return v; };
+  const u8 = () => d.getUint8(p++);
+  const vlq = () => { let v = 0, b; do { b = u8(); v = (v << 7) | (b & 0x7f); } while (b & 0x80); return v; };
+
+  if (str(4) !== 'MThd') throw new Error('MIDIファイルではありません');
+  const hlen = u32();
+  u16(); // format
+  const ntrks = u16();
+  const division = u16();
+  p = 8 + hlen;
+
+  const raw = [];    // {tick, type:'on'|'off', ch, note, vel}
+  const tempos = []; // {tick, uspq}
+  for (let t = 0; t < ntrks && p < d.byteLength; t++) {
+    const id = str(4);
+    const len = u32();
+    const end = p + len;
+    if (id !== 'MTrk') { p = end; continue; }
+    let tick = 0, status = 0;
+    while (p < end) {
+      tick += vlq();
+      let b = u8();
+      if (b < 0x80) { p--; b = status; } else if (b < 0xf0) { status = b; }
+      if (b === 0xff) {
+        const type = u8(); const l = vlq();
+        if (type === 0x51 && l === 3) tempos.push({ tick, uspq: (d.getUint8(p) << 16) | (d.getUint8(p + 1) << 8) | d.getUint8(p + 2) });
+        p += l;
+      } else if (b === 0xf0 || b === 0xf7) {
+        p += vlq();
+      } else {
+        const hi = b & 0xf0, ch = b & 0x0f;
+        if (hi === 0x90) { const n = u8(), v = u8(); raw.push({ tick, type: v ? 'on' : 'off', ch, note: n, vel: v }); }
+        else if (hi === 0x80) { const n = u8(); u8(); raw.push({ tick, type: 'off', ch, note: n }); }
+        else if (hi === 0xc0 || hi === 0xd0) { u8(); }
+        else { u8(); u8(); }
+      }
+    }
+    p = end;
+  }
+
+  // tick -> seconds
+  let toSec, bpm = 120, tempoVaries = false;
+  if (division & 0x8000) {
+    const fps = 256 - (division >> 8), tpf = division & 0xff;
+    toSec = tick => tick / (fps * tpf);
+  } else {
+    tempos.sort((a, b) => a.tick - b.tick);
+    const segs = [{ tick: 0, sec: 0, uspq: 500000 }];
+    for (const tp of tempos) {
+      const last = segs[segs.length - 1];
+      const sec = last.sec + (tp.tick - last.tick) * last.uspq / 1e6 / division;
+      if (tp.tick === last.tick) last.uspq = tp.uspq;
+      else segs.push({ tick: tp.tick, sec, uspq: tp.uspq });
+    }
+    bpm = 60e6 / segs[0].uspq;
+    tempoVaries = segs.some(s => s.uspq !== segs[0].uspq);
+    toSec = tick => {
+      let s = segs[0];
+      for (let i = 1; i < segs.length && segs[i].tick <= tick; i++) s = segs[i];
+      return s.sec + (tick - s.tick) * s.uspq / 1e6 / division;
+    };
+  }
+
+  // pair note on/off
+  raw.sort((a, b) => a.tick - b.tick || (a.type === 'off' ? -1 : 1));
+  const open = new Map();
+  const notes = [];
+  for (const e of raw) {
+    const k = e.ch * 128 + e.note;
+    if (e.type === 'on') {
+      if (!open.has(k)) open.set(k, []);
+      open.get(k).push(e);
+    } else {
+      const st = open.get(k);
+      if (st && st.length) {
+        const on = st.shift();
+        notes.push({ ch: e.ch, note: e.note, vel: on.vel, start: toSec(on.tick), end: toSec(e.tick) });
+      }
+    }
+  }
+  for (const st of open.values()) for (const on of st) {
+    const s = toSec(on.tick);
+    notes.push({ ch: on.ch, note: on.note, vel: on.vel, start: s, end: s + 0.5 });
+  }
+  notes.sort((a, b) => a.start - b.start);
+  return { notes, bpm, tempoVaries };
+}
+
+// ---------- note -> key mapping ----------
+// pitch class -> scale degree (0=ド ... 6=シ). Sharps/flats round down (C#→ド, F#→ファ ...)
+const DEGREE = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+const NOTE_NAMES = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+const octOf = n => Math.floor(n / 12);
+const octName = o => o - 1; // MIDI 60 = C4
+
+function buildMapping(notes, mode) {
+  const counts = new Map();
+  for (const n of notes) counts.set(octOf(n.note), (counts.get(octOf(n.note)) || 0) + 1);
+  let base = 5, best = -1;
+  for (const [o, c] of counts) if (c > best) { best = c; base = o; }
+
+  let dir = mode === 'down' ? -1 : 1;
+  if (mode === 'auto') {
+    let up = 0, down = 0;
+    for (const n of notes) {
+      const deg = DEGREE[n.note % 12];
+      if (deg > 2) continue;
+      if (octOf(n.note) === base + 1) up++;
+      if (octOf(n.note) === base - 1) down++;
+    }
+    dir = down > up ? -1 : 1;
+  }
+  const extra = base + dir;
+  const keyFor = note => {
+    const deg = DEGREE[note % 12];
+    if (octOf(note) === extra && deg <= 2) return ['8', '9', '0'][deg];
+    return String(deg + 1); // everything else folds into 1–7
+  };
+  return { base, extra, dir, keyFor };
+}
+
+// ---------- audio ----------
+let ctx = null, master = null;
+function ensureAudio() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+  if (!master) {
+    const comp = ctx.createDynamicsCompressor();
+    master = ctx.createGain();
+    master.gain.value = 0.8;
+    master.connect(comp).connect(ctx.destination);
+  }
+}
+function killAudio() {
+  if (master) { master.disconnect(); master = null; }
+}
+// calculator / push-phone style beep: flat square wave, cut off abruptly
+const SCALE = [0, 2, 4, 5, 7, 9, 11];
+// pitch for a manually tapped key: ド of the MIDI's busiest octave = 1 (C5 before a file is loaded)
+function keyPitch(k, map) {
+  const idx = '1234567890'.indexOf(k);
+  const base = map ? map.base * 12 : 72, dir = map ? map.dir : 1;
+  return idx < 7 ? base + SCALE[idx] : base + 12 * dir + SCALE[idx - 7];
+}
+function beep(note, t0, t1) {
+  const end = Math.min(Math.max(t1, t0 + 0.08), t0 + 2);
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'square';
+  o.frequency.value = 440 * Math.pow(2, (note - 69) / 12);
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(0.07, t0 + 0.003);
+  g.gain.setValueAtTime(0.07, end);
+  g.gain.linearRampToValueAtTime(0, end + 0.004);
+  o.connect(g).connect(master);
+  o.start(t0);
+  o.stop(end + 0.01);
+}
+// glockenspiel: struck metal bar = inharmonic sine partials that ring and decay
+const GLOCK_PARTIALS = [[1, 1, 1.4], [2.76, 0.4, 0.35], [5.4, 0.18, 0.12], [8.93, 0.08, 0.06]]; // [ratio, amp, decay sec]
+function glock(note, t0) {
+  const f = 440 * Math.pow(2, (note - 69) / 12);
+  for (const [ratio, amp, decay] of GLOCK_PARTIALS) {
+    if (f * ratio > 18000) continue;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = f * ratio;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.11 * amp, t0 + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + decay * 3);
+    o.connect(g).connect(master);
+    o.start(t0);
+    o.stop(t0 + decay * 3 + 0.05);
+  }
+}
+function keySound(note, t0, t1) {
+  if ($('soundType').value === 'glock') glock(note, t0);
+  else beep(note, t0, t1);
+}
+
+// ---------- playback ----------
+const $ = id => document.getElementById(id);
+let allNotes = [];
+let fileBpm = 120, bpmDefault = 120;
+// playback speed relative to the file: chosen BPM / the MIDI's BPM (tempo changes inside the file are scaled together)
+function playbackRate() {
+  const v = +$('bpm').value;
+  return v > 0 && v !== bpmDefault ? v / fileBpm : 1;
+}
+let playing = null; // {notes, events, t0, ai, ei, dur, raf}
+const held = {};    // key -> count of active notes
+const manual = {};
+
+function setPressed(k) {
+  keyEls[k].classList.toggle('pressed', (held[k] || 0) > 0 || !!manual[k]);
+}
+
+function prepare() {
+  const rate = playbackRate();
+  const notes = ($('noDrums').checked ? allNotes.filter(n => n.ch !== 9) : allNotes)
+    .map(n => ({ ...n, start: n.start / rate, end: n.end / rate }));
+  const map = buildMapping(notes, $('octMode').value);
+  for (const n of notes) n.key = map.keyFor(n.note);
+
+  // visual intervals: release briefly before the same key is hit again so re-presses are visible
+  const byKey = {};
+  for (const n of notes) (byKey[n.key] ||= []).push(n);
+  const events = [], beeps = [];
+  for (const k in byKey) {
+    const list = byKey[k];
+    // merge simultaneous (chord) notes on the same key into one press
+    const presses = [];
+    for (const n of list) {
+      const last = presses[presses.length - 1];
+      if (last && n.start - last.start < 0.015) last.end = Math.max(last.end, n.end);
+      else presses.push({ start: n.start, end: n.end });
+    }
+    for (let i = 0; i < presses.length; i++) {
+      const pr = presses[i];
+      let end = Math.max(pr.end, pr.start + 0.09);
+      const next = presses[i + 1];
+      if (next && end > next.start - 0.04) end = Math.max(pr.start + 0.03, next.start - 0.04);
+      events.push({ t: pr.start, k, on: true }, { t: end, k, on: false });
+    }
+  }
+  events.sort((a, b) => a.t - b.t || (a.on ? 1 : -1));
+  // sound uses the MIDI's own pitches (the buttons are only the rounded/folded mapping)
+  for (const n of notes) beeps.push({ start: n.start, end: n.end, note: n.note });
+
+  const o = n => `${NOTE_NAMES[DEGREE[n]]}`;
+  const baseName = octName(map.base), extraName = octName(map.extra);
+  $('info').innerHTML =
+    `ノート数: ${notes.length}<br>` +
+    `1〜7 = ドレミファソラシ (オクターブ${baseName}、最多)<br>` +
+    `8 9 0 = ${map.dir > 0 ? '1オクターブ高い' : '1オクターブ低い'}ドレミ (C${extraName} D${extraName} E${extraName})<br>` +
+    `それ以外の音は1〜7に折り返し、#/♭は下の音に丸めています`;
+  return { notes, events, beeps, rate };
+}
+
+// startAt: position in the MIDI file's own time (seconds), used to keep going when BPM changes mid-play
+function play(startAt = 0) {
+  if (!allNotes.length) return;
+  stop();
+  ensureAudio();
+  const { notes, events, beeps, rate } = prepare();
+  const dur = notes.reduce((m, n) => Math.max(m, n.end), 0) + 0.3;
+  const pos = startAt / rate;
+  const P = { beeps, events, rate, t0: ctx.currentTime + (startAt ? 0.03 : 0.15) - pos, ai: 0, ei: 0, dur };
+  while (P.ai < beeps.length && beeps[P.ai].start < pos) P.ai++;
+  while (P.ei < events.length && events[P.ei].t < pos) P.ei++;
+  playing = P;
+  if (!startAt) resetDots();
+  $('stop').disabled = false;
+  $('play').textContent = '↻ 最初から';
+  tick();
+}
+
+function tick() {
+  const P = playing;
+  if (!P) return;
+  const now = ctx.currentTime - P.t0;
+  // schedule audio a little ahead
+  while (P.ai < P.beeps.length && P.beeps[P.ai].start < now + 0.25) {
+    const b = P.beeps[P.ai++];
+    if ($('sound').checked) {
+      ensureAudio();
+      keySound(b.note, P.t0 + b.start, P.t0 + b.end);
+    }
+  }
+  // visuals
+  while (P.ei < P.events.length && P.events[P.ei].t <= now) {
+    const e = P.events[P.ei++];
+    if (e.on) { held[e.k] = (held[e.k] || 0) + 1; advanceDots(); }
+    else held[e.k] = Math.max(0, (held[e.k] || 0) - 1);
+    setPressed(e.k);
+  }
+  if (!dragging) setBar(now / P.dur);
+  if (now >= P.dur) { finish(); return; }
+  P.raf = requestAnimationFrame(tick);
+}
+
+function clearHeld() {
+  for (const k in keyEls) { held[k] = 0; setPressed(k); }
+}
+function finish() {
+  playing = null;
+  clearHeld();
+  $('stop').disabled = true;
+  $('play').textContent = '▶ 再生';
+}
+function stop() {
+  if (playing) cancelAnimationFrame(playing.raf);
+  playing = null;
+  killAudio();
+  clearHeld();
+  pausePos = 0;
+  setBar(0);
+  $('stop').disabled = true;
+  $('play').textContent = '▶ 再生';
+}
+
+// manual tapping plays the key's note in the current mapping
+function manualPress(k) {
+  manual[k] = true; setPressed(k); advanceDots();
+  if (!$('sound').checked) return;
+  ensureAudio();
+  keySound(keyPitch(k, window.__map), ctx.currentTime, ctx.currentTime + 0.15);
+}
+function manualRelease(k) {
+  if (!manual[k]) return;
+  manual[k] = false; setPressed(k);
+}
+
+async function loadBuffer(buf, name) {
+  stop();
+  const parsed = parseMidi(buf);
+  allNotes = parsed.notes;
+  fileBpm = parsed.bpm;
+  bpmDefault = Math.round(fileBpm * 10) / 10;
+  $('bpm').value = bpmDefault;
+  $('bpm').disabled = $('bpmReset').disabled = false;
+  $('bpmInfo').textContent = `MIDI: ${bpmDefault}` + (parsed.tempoVaries ? '(途中でテンポ変化あり)' : '');
+  $('fileName').textContent = name;
+  $('play').disabled = !allNotes.length;
+  const notes = $('noDrums').checked ? allNotes.filter(n => n.ch !== 9) : allNotes;
+  window.__map = buildMapping(notes, $('octMode').value);
+  prepare();
+  resetDots();
+}
+window.loadMidiBuffer = loadBuffer;
+
+$('file').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    await loadBuffer(await f.arrayBuffer(), f.name);
+    play();
+  } catch (err) {
+    $('info').textContent = '読み込みに失敗しました: ' + err.message;
+  }
+});
+$('play').addEventListener('click', () => play(playing ? 0 : pausePos));
+
+// ---------- seek bar ----------
+let pausePos = 0, dragging = false; // pausePos: where ▶ starts after seeking while stopped (file seconds)
+function setBar(f) {
+  f = Math.min(1, Math.max(0, f)) * 100 + '%';
+  $('bar').style.width = f;
+  $('thumb').style.left = f;
+}
+function fileDuration() {
+  const notes = $('noDrums').checked ? allNotes.filter(n => n.ch !== 9) : allNotes;
+  return notes.reduce((m, n) => Math.max(m, n.end), 0) + 0.3;
+}
+function fracAt(e) {
+  const r = $('progress').getBoundingClientRect();
+  return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+}
+const seekEl = $('seek');
+seekEl.addEventListener('pointerdown', e => {
+  if (!allNotes.length) return;
+  dragging = true;
+  seekEl.classList.add('dragging');
+  seekEl.setPointerCapture(e.pointerId);
+  setBar(fracAt(e));
+});
+seekEl.addEventListener('pointermove', e => { if (dragging) setBar(fracAt(e)); });
+seekEl.addEventListener('pointerup', e => {
+  if (!dragging) return;
+  dragging = false;
+  seekEl.classList.remove('dragging');
+  const f = fracAt(e), pos = f * fileDuration();
+  if (playing) play(pos);
+  else { pausePos = pos; setBar(f); }
+});
+seekEl.addEventListener('pointercancel', () => { dragging = false; seekEl.classList.remove('dragging'); });
+function onBpmChange() {
+  const v = +$('bpm').value;
+  if (!(v >= 20 && v <= 400)) $('bpm').value = Math.min(400, Math.max(20, v || bpmDefault));
+  if (playing) play(Math.max(0, (ctx.currentTime - playing.t0) * playing.rate));
+}
+$('bpm').addEventListener('change', onBpmChange);
+$('bpmReset').addEventListener('click', () => { $('bpm').value = bpmDefault; onBpmChange(); });
+$('stop').addEventListener('click', stop);
+for (const id of ['octMode', 'noDrums']) $(id).addEventListener('change', () => {
+  if (!allNotes.length) return;
+  const notes = $('noDrums').checked ? allNotes.filter(n => n.ch !== 9) : allNotes;
+  window.__map = buildMapping(notes, $('octMode').value);
+  if (playing) play(); else prepare();
+});
+$('sound').addEventListener('change', () => { if (!$('sound').checked) killAudio(); else if (ctx) ensureAudio(); });
+</script>
+</body>
+</html>
